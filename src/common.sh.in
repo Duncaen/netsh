@@ -1,0 +1,67 @@
+msg_error() {
+	printf "Error: %s\n" "$1"
+	exit 1
+}
+
+msg_debug() {
+	printf "Debug: %s\n" "$1"
+}
+
+msg_warn() {
+	printf "Warning: %s\n" "$1"
+}
+
+msg_info() {
+	printf "Info: %s\n" "$1"
+}
+
+
+def_config() {
+	: ${IP:=dhcp}
+	: ${ADDRESS:=}
+	: ${ROUTES:=}
+	: ${GATEWAY:=}
+
+	: ${IP6:=dhcpcd}
+	: ${ADDRESS6:=}
+	: ${ROUTES6:=}
+	: ${GATEWAY6:=}
+
+	: ${DHCP_TIMEOUT:=30}
+	: ${DHCP_RELESE:=yes}
+	: ${DHCP_OPTS:=}
+
+	: ${HOOKS_DIR:=/usr/lib/netsh/hooks}
+}
+
+check_type() {
+	case "$1" in
+		ethernet|bridge|bond|netns|veth) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+load_hooks() {
+	# source all hooks
+	for hook_dir in $HOOKS_DIRS; do
+		[ ! -d "$hook_dir" ] && \
+			msg_debug "Hook directory '$hook_dir' is not a directory" && continue
+		for hook in $hook_dir/*; do
+			. "./$hook_dir/$hook"
+			# TODO: check if source worked
+			name="${hook%.*}"
+			${HOOKS+=" $name"}
+		done
+	done
+}
+
+run_hooks() {
+	# export IP ADDRESS ROUTES GATEWAY
+	# export IP6 ADDRESS6 ROUTES6 GATEWAY6
+	# export DHCP_TIMEOUT DHCP_RELEASE DHCP_OPTS
+	# for hook in ${HOOKS_DIR}/*; do
+		# $hook $@
+	# done
+}
+
+def_config

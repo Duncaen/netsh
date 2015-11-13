@@ -1,0 +1,41 @@
+#!/bin/sh
+
+tuntap_conf() {
+	: ${NAME:=}
+	: ${MODE:=}
+	: ${USER:=}
+	: ${GROUP:=}
+	: ${UP_TIMEOUT:=5}
+	: ${DOWN_TIMEOUT:=5}
+
+	[ -z "${NAME}" ] && msg_error "Name is requiered"
+
+	for dev in $BINDS; do
+		[ ! -d "/sys/class/net/$dev" ] && \
+			msg_error "'${NAME}' is not a valid interface"
+	done
+}
+
+tuntap_up() {
+
+	ip_do tuntap add dev "${NAME}" mode "${MODE}" "${USER:+user "$USER"}" \
+		"${GROUP:+group "$GROUP"}"
+	[ "$?" -ne 0 ] && msg_error "Could not add tuntap '${NAME}'"
+
+	ip_do link set dev "${NAME}" up
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' up"
+	[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "${NAME}"
+
+	ip_set "${NAME}"
+}
+
+tuntap_down() {
+	ip_unset "${NAME}"
+
+	ip_do link set dev "${NAME}" down
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' down"
+	[ "$DOWN_TIMEOUT" -ne 0 ] && ip_wait_down "${NAME}"
+
+	ip_do tuntap delete dev "${NAME}" mode "${MODE}"
+	[ "$?" -ne 0 ] && msg_error "Could not delete bridge '${NAME}'"
+}

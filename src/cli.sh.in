@@ -1,0 +1,115 @@
+#!/bin/sh
+
+. "${NETSH_LIBDIR}/common.sh"
+
+: ${SVCMD:=$(command -v sv)}
+: ${SVDIR:=/var/service}
+: ${SVWAIT:=7}
+
+netsh_list() {
+	echo "list"
+	for sv in "${SVDIR}"/*; do
+		name="${sv##*/}"
+		check_type "${name%%-*}" || continue
+		"${SVCMD}" status "${sv}" || true
+	done
+}
+
+netsh_start() {
+	if ! "${SVCMD}" up "$1"; then
+		msg_error "Failed to start service '$1'"
+	fi
+}
+
+netsh_stop() {
+	if ! "${SVCMD}" down "$1"; then
+		msg_error "Failed to stop service '$1'"
+	fi
+}
+
+netsh_restart() {
+	if ! "${SVCMD}" restart "$1"; then
+		msg_error "Failed to restart service '$1'"
+	fi
+}
+
+netsh_enable() {
+	netsh_start "$1"
+	[ -e "${SVDIR}/$1/down" ] && rm "${SVDIR}/$1/down"
+	msg_info "Enabled service '$1'"
+}
+
+netsh_disable() {
+	# stop service and ignore if it fails
+	(netsh_stop "$1") || true
+	# disable service by creating down file
+	touch "${SVDIR}/$1/down"
+	msg_info "Disabled service '$1'"
+}
+
+netsh_is_enabled() {
+
+}
+
+netsh_edit() {
+	: ${EDITOR:=$(command -v vi)}
+	for sv in "$@"; do
+		if [ ! -d "${SVDIR}/${sv%/*}" ]; then
+			msg_warn "Service '${sv}' does not exist"
+			continue
+		fi
+		"${EDITOR}" "${SVDIR}/$1/conf"
+		msg_debug "Editor exit '$?'"
+		if ! (netsh_validate "${SVDIR}/$1/conf"); then
+			netsh_disable "$1"
+		fi
+	done
+}
+
+netsh_validate() {
+	type="${1##*-}"
+	case "$type" in
+		"${NETSH_TYPES}") ;;
+		*) msg_error "Service type '$type' is not available" ;;
+	esac
+	if ! (. "${NETSH_LIBDIR}/type/${type}.sh" && "${type}_conf"); then
+		msg_warn "Service configuration for '$1' is not valid"
+		return 1
+	fi
+	return 0
+}
+
+netsh_usage() {
+	cat <<EOUSAGE
+Usage: $1 {COMMAND} [PROFILE...]
+          [--help|--version]
+ list
+ start
+ stop
+ restart
+ enable
+ disable
+ is-enabled
+ edit
+EOUSAGE
+}
+
+netsh_version() {
+	printf "netsh: @@VERSION@@"
+}
+
+cmd="$1"
+shift
+[ "$cmd" = "--help" ] && netsh_usage && exit 0
+[ "$cmd" = "--version" ] && netsh_version && exit 0
+case "$cmd" in
+	l) netsh_list "$@" ;;
+	sto) netsh_stop "$@" ;;
+	s) netsh_start "$@" ;;
+	r) netsh_restart "$@" ;;
+	ed) netsh_edit "$@" ;;
+	e) netsh_enable "$@" ;;
+	d) netsh_disable "$@" ;;
+	i) netsh_is_enabled "$@" ;;
+	*) netsh_usage && exit 1 ;;
+esac

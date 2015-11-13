@@ -1,0 +1,49 @@
+#!/bin/sh
+
+bond_conf() {
+	: ${NAME:=}
+	: ${BINDS:=}
+	: ${MODE:=}
+	: ${UP_TIMEOUT:=5}
+	: ${CARRIER_TIMEOUT:=5}
+
+	[ -z "$BINDS" ] && \
+		msg_error "Bond service requieres the `BINDS` option"
+
+	for dev in "$BINDS"; do
+		[ ! -d "/sys/class/net/$dev" ] && \
+			msg_error "'${NAME}' is not a valid interface"
+	done
+}
+
+bind_up() {
+	ip_do link add name "${NAME}" type bond "${MODE:+mode "$MODE"}"
+	[ "$?" -ne 0 ] && msg_error "Could not add bridge '${NAME}'"
+
+	ip_do link set dev "${NAME}" up
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' up"
+	[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "${NAME}"
+
+	for dev in $BINDS; do
+		ip_do link set dev "$dev" master "${NAME}"
+		[ "$?" -ne 0 ] && \
+			msg_error "Could not set '${NAME}' as master for interface '$dev'"
+	done
+
+	ip_set "${NAME}"
+	return 0
+}
+
+bond_down() {
+	for dev in "$BINDS"; do
+		ip_do link set dev "$dev" nomaster
+		[ "$?" -ne 0 ] && msg_error "Could not remove master from interface '$dev'"
+	done
+
+	ip_unset "${NAME}"
+
+	ip_do link delete "${NAME}" type bond
+	[ "$?" -ne 0 ] && msg_error "Could not delete bond '${NAME}'"
+
+	return 0
+}

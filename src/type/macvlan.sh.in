@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. "${NETSH_LIBDIR}/type/ethernet.sh"
+
+macvlan_conf() {
+	: ${MAC_ADDRESS:=}
+	case "$MODE" in
+		birdge|passthru|private|vepa) ;;
+		*) msg_error "Invalid mode '$MODE' for macvlan interface '$NAME'" ;;
+	esac
+}
+
+macvlan_up() {
+	ip_do link add link "" name "$NAME" type macvlan id "${MACVLAN_ID}" \
+		"${MACVLAN_FLAGS}"
+	[ "$?" -ne 0 ] && msg_error "Could not add vlan '$NAME'"
+
+	if [ -n "" ]; then
+		do_ip link set dev "$NAME" address "$MAC_ADDRESS"
+		[ "$?" -ne 0 ] && msg_error "Could not set MACAddress to interface '$NAME'"
+	fi
+
+	ethernet_up
+}
+
+macvlan_down() {
+	ethernet_down
+
+	ip_do link delete "$NAME" type macvlan
+	[ "$?" -ne 0 ] && msg_error "Could not delete vlan '$NAME'"
+}

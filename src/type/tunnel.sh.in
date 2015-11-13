@@ -1,0 +1,48 @@
+#!/bin/sh
+
+tunnel_conf() {
+	: ${NAME:=}
+	: ${MODE:=}
+	: ${REMOTE:=}
+	: ${LOCAL:=}
+	: ${KEY:=}
+	: ${UP_TIMEOUT:=5}
+	: ${CARRIER_TIMEOUT:=5}
+
+	[ -z "${NAME}" ] && msg_error "'NAME' option is requiered"
+	[ -z "${REMOTE}" ] && msg_error "'REMOTE' option is requiered"
+
+	[ -d "/sys/class/net/${NAME}" ] && [ ! -d "/sys/class/net/${NAME}/brif" ] && \
+			msg_error "Interface '${NAME}' already exists and is not a bridge"
+
+	for dev in $BINDS; do
+		[ ! -d "/sys/class/net/$dev" ] && \
+			msg_error "'${NAME}' is not a valid interface"
+	done
+}
+
+tunnel_up() {
+	family="-4"
+	case "$MODE" in
+		*ip6*|any) family="-6" ;;
+	esac
+
+	ip_do "$family" tunnel add "${NAME}" remote "$REMOTE" \
+		"${LOCAL:+ local "$LOCAL"}" "${KEY:+ "$KEY"}"
+	[ "$?" -ne 0 ] && msg_error "Could not create tunnel '${NAME}'"
+
+	ip_do link set dev "${NAME}" up
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' up"
+	[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "${NAME}"
+
+	ip_set "${NAME}"
+	return 0
+}
+
+tunnel_down() {
+	ip_unset "${NAME}"
+	ip_do link set dev "${NAME}" down
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' down"
+	[ "$DOWN_TIMEOUT" -ne 0 ] && ip_wait_down "${NAME}"
+	return 0
+}

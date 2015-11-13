@@ -1,0 +1,115 @@
+#!/bin/sh
+
+: ${IP_CMD:="$(command -v ip)"}
+
+ip_do() {
+	"${IP_CMD}" "$@"
+}
+
+ip_wait_up() {
+	msg_debug "wait '$UP_TIMEOUT' seconds for interface '$1' to come up"
+	wait="$UP_TIMEOUT"
+	while read flags < "/sys/class/net/$1/flags"; do
+		msg_debug "'$wait' seconds left"
+		(( flags & 0x1 )) && return 0
+		(( wait=wait - 1 )) && sleep 1
+		[ "$wait" -eq 0 ] && break
+	done
+	msg_error "Timeout exceeded interface '$1' it not up"
+}
+
+ip_wait_down() {
+	msg_debug "wait '$DOWN_TIMEOUT' seconds for interface '$1' to come down"
+	wait="$DOWN_TIMEOUT"
+	while read flags < "/sys/class/net/$1/flags"; do
+		msg_debug "'$wait' seconds left"
+		(( flags & 0x1 )) || return 0
+		(( wait=wait - 1 )) && sleep 1
+		[ "$wait" -eq 0 ] && break
+	done
+	msg_error "Timeout exceeded interface '$1' is not down"
+}
+
+ip_wait_carrier_up() {
+	msg_debug "wait '$CARRIER_TIMEOUT' seconds for carrier on '$1' to come up"
+	wait="$CARRIER_TIMEOUT"
+	while read carrier < "/sys/class/net/$1/carrier"; do
+		msg_debug "'$wait' seconds left"
+		(( carrier == 1 )) && return 0
+		(( wait=wait - 1 )) && sleep 1
+		[ "$wait" -eq 0 ] && break
+	done
+	msg_error "Timeout exceeded carrier on '$1' is not down"
+}
+
+ip_set() {
+	msg_debug "set address for '$1' '$IP'"
+	case "$IP" in
+		dhcp) interface_dhcp_start "$1" ;;
+		static)
+			for addr in $ADDRESS; do
+				ip_do addr add "$addr" brd + dev "$1"
+				[ "$?" -ne 0 ] && \
+					msg_error "Could not add address '$addr' to interface '$1'"
+			done
+			ipv6dad="nodad"
+			for addr in $ADDRESS; do
+				ip_do -6 addr add "$addr" "$ipv6dad" "$1"
+				[ "$?" -ne 0 ] && \
+					msg_error "Could not add address '$addr' to interface '$1'"
+			done
+			;;
+	esac
+	for route in $ROUTES; do
+		ip_do route add "$route" dev "$1"
+		[ "$?" -ne 0 ] && \
+			msg_error "Could not add route '$route' to interface '$1'"
+	done
+	for route in $ROUTES6; do
+		ip_do -6 route add "$route" dev "$1"
+		[ "$?" -ne 0 ] && \
+			msg_error "Could not add route '$route' to interface '$1'"
+	done
+	if [ -n "$GATEWAY" ]; then
+		ip_do route add default via "$GATEWAY" dev "$1"
+		[ "$?" -ne 0 ] && \
+			msg_error "Could not set gateway '$GATEWAY' on interface '$1'"
+	fi
+	if [ -n "$GATEWAY6" ]; then
+		ip_do -6 route add default via "$GATEWAY6" dev "$1"
+		[ "$?" -ne 0 ] && \
+			msg_error "Could not set gateway '$GATEWAY6' on interface '$1'"
+	fi
+}
+
+interface_dhcp_start() {
+	msg_debug "Send dhcp start request for interface '$1'"
+	dhcpcd -B -L "$1"
+	return 0
+}
+
+interface_dhcp_stop() {
+	msg_debug "Send dhcp stop request for interface '$1'"
+	dhcpcd -B -x "$1"
+	return 0
+}
+
+ip_unset() {
+	msg_debug "unset address for '$1' '$IP'"
+	# TODO: dhcp stop
+	case "$IP" in
+		dhcp) interface_dhcp_stop "$1" ;;
+		static)
+			;;
+	esac
+	return 0
+}
+
+interface_ip6_wait_dad() {
+	wait="$IP6_DAD_TIMEOUT"
+	while [ "$wait" -ge "$IP6_DAD_TIMEOUT" ]; do
+		[ -n "$(ip_do -6 addr show dev "$1" tentative)" ] && return 0
+		sleep 1 && wait=$((wait - 1))
+	done
+	return 1
+}

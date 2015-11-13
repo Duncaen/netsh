@@ -1,0 +1,30 @@
+#!/bin/sh
+
+dummy_conf() {
+	: ${NAME:=}
+	: ${UP_TIMEOUT:=5}
+	: ${CARRIER_TIMEOUT:=5}
+
+	[ -z "${NAME}" ] && msg_error "Name is requiered"
+
+	[ -d "/sys/class/net/${NAME}" ] && \
+			msg_error "Interface '${NAME}' already exists"
+}
+
+dummy_up(){
+	ip_do link add name "${NAME}" type dummy
+	[ "$?" -ne 0 ] && msg_error "Could not add dummy '${NAME}'"
+
+	ip_do link set dev "${NAME}" up
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' up"
+	[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "${NAME}"
+}
+
+dummy_down() {
+	ip_unset "${NAME}"
+
+	ip_do link delete "${NAME}" type dummy
+	[ "$?" -ne 0 ] && msg_error "Could not delete dummy '${NAME}'"
+
+	return 0
+}

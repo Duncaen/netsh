@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+
+: ${NETSH_LIBDIR:=@@PREFIX@@/lib/netsh}
+
+: ${PROGPATH:=$0}
+: ${PROGNAME:=${PROGPATH##*/}}
+
+case "$PROGNAME" in
+	run|finish)
+		. "${NETSH_LIBDIR}/runit.sh"
+		;;
+	*)
+		. "${NETSH_LIBDIR}/cli.sh"
+		;;
+esac

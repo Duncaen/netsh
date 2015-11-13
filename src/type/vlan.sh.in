@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. "${NETSH_LIBDIR}/type/ethernet.sh"
+
+vlan_conf() {
+	: ${VLAN_ID:=}
+	: ${VLAN_FLAGS:=}
+
+	[ -z "${VLAN_ID}" ] && msg_error "'VLAN_ID' option is requiered"
+
+	ethernet_conf
+}
+
+vlan_up() {
+	ip_do link add link "" name "${NAME}" type vlan id "${VLAN_ID}" "${VLAN_FLAGS}"
+	[ "$?" -ne 0 ] && msg_error "Could not add vlan '${NAME}'"
+
+	ethernet_up
+}
+
+vlan_down() {
+	ethernet_down
+
+	ip_do link delete "${NAME}" type vlan
+	[ "$?" -ne 0 ] && msg_error "Could not delete vlan '${NAME}'"
+}

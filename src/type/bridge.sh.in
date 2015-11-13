@@ -1,0 +1,77 @@
+#!/bin/sh
+
+bridge_conf() {
+	: ${NAME:=}
+	: ${UP_TIMEOUT:=5}
+	: ${DOWN_TIMEOUT:=5}
+	: ${CARRIER_TIMEOUT:=5}
+
+	[ -z "${NAME}" ] && msg_error "Name is requiered"
+
+	[ -d "/sys/class/net/${NAME}" ] && [ ! -d "/sys/class/net/${NAME}/brif" ] && \
+			msg_error "Interface '${NAME}' already exists and is not a bridge"
+
+	for dev in $BINDS; do
+		[ ! -d "/sys/class/net/$dev" ] && \
+			msg_error "'${NAME}' is not a valid interface"
+	done
+}
+
+bridge_up() {
+	ip_do link add name "${NAME}" type bridge
+	[ "$?" -ne 0 ] && msg_error "Could not add bridge '${NAME}'"
+
+	ip_do link set dev "${NAME}" up
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' up"
+	[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "${NAME}"
+
+	for dev in $BINDS; do
+		ip_do link set dev "$dev" promisc on up
+		[ "$?" -ne 0 ] && \
+			msg_error "Interface '${NAME}' could not turn on promisc mode"
+		[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "$dev"
+
+		ip_do addr flush dev "$dev"
+		[ "$?" -ne 0 ] && msg_error "Could not flush address on interface '$dev'"
+
+		ip_do link set dev "$dev" master "${NAME}"
+		[ "$?" -ne 0 ] && \
+			msg_error "Could not set '${NAME}' as master for interface '$dev'"
+	done
+
+	ip_set "${NAME}"
+
+	return 0
+}
+
+bridge_down() {
+	for dev in "$BINDS"; do
+		[ ! -d "/sys/class/net/$dev" ] && \
+			msg_error "'${NAME}' is not a valid interface"
+
+		ip_do link set dev "$dev" promisc off down
+		[ "$?" -ne 0 ] && \
+			msg_error "Interface '${NAME}' could not turn off promisc mode"
+		[ "$DOWN_TIMEOUT" -ne 0 ] && ip_wait_down "$dev"
+
+		ip_do link set dev "$dev" nomaster
+		[ "$?" -ne 0 ] && msg_error "Could not remove master from interface '$dev'"
+	done
+
+	ip_unset "${NAME}"
+	ip_route_fush "${NAME}"
+
+	ip_do route flush dev "$dev"
+	[ "$?" -ne 0 ] && msg_error "Could not flush routes on interface '$dev'"
+
+	ip_do -6 route flush dev "$dev"
+	[ "$?" -ne 0 ] && msg_error "Could not flush ipv6 routes on interface '$dev'"
+
+	ip_do addr flush dev "$dev"
+	[ "$?" -ne 0 ] && msg_error "Could not flush address on interface '$dev'"
+
+	ip_do link delete "${NAME}" type bridge
+	[ "$?" -ne 0 ] && msg_error "Could not delete bridge '${NAME}'"
+
+	return 0
+}

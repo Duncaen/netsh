@@ -1,0 +1,86 @@
+#!/bin/sh
+
+. "${NETSH_LIBDIR}/common.sh"
+. "${NETSH_LIBDIR}/ip.sh"
+
+runit_conf() {
+	# source the service config file
+	[ -r conf ] && . ./conf
+
+	# The network namespace the service runs in
+	: ${NETNS:=}
+
+	# network namespace hackery
+	if [ -n "$NETNS" -a -z "$(ip netns identify $$)" ]; then
+		msg_debug "Reexecuting in network namespace '$NETNS'"
+		ip netns exec "$NETNS" "${PROGPATH}"
+	fi
+
+	# The IP variable sets the ipv4 address resolution type
+	# available options are [dhcpcd,dhclient,static,empty]
+	: ${IP:=dhcp}
+	: ${DHCP:=dhcpcd}
+
+	# ADDRESS,ROUTES and GATEWAY variables are used for static ipv4 setups.
+	: ${ADDRESS:=}
+	: ${ROUTES:=}
+	: ${GATEWAY:=}
+
+	# The IP variable sets the ipv6 address resolution type
+	# available options are [dhcpcd,dhclient,static,empty]
+	: ${IP6:=dhcp}
+	: ${DHCP6:=dhcpcd}
+
+	# ADDRESS6,ROUTES6 and GATEWAY6 variables are used for static ipv6 setups.
+	: ${ADDRESS6:=}
+	: ${ROUTES6:=}
+	: ${GATEWAY6:=}
+
+	: ${IP6_DAD_TIMEOUT:=0}
+
+	: ${STATE_TIMEOUT:=0}
+
+	# HOOKS_DIR is a space seperated list of directories containing hook scripts.
+	: ${HOOKS_DIRS:="@@PREFIX@@/lib/netsh/hooks.d /etc/netsh/hooks.d"}
+	# hooks holds a list of all hook file names
+	: ${HOOKS:=}
+
+	: ${NAME:=${PWD##*/}}
+
+	# TYPE defines which type of service this is, available options are
+	# [ethernet|bridge|netns]
+	: ${TYPE:=}
+	if [ -z "$TYPE" ]; then
+		TYPE="${NAME%%-*}"
+	fi
+	case "$TYPE" in
+		ethernet|bridge|netns|veth) ;;
+		*) msg_error "Service type '$TYPE' is not available" ;;
+	esac
+}
+
+ruit_run() {
+	# read service config
+	runit_conf
+	# source service type script
+	. "@@PREFIX@@/lib/netsh/type/$TYPE"
+	# call service types conf and up function
+	"${TYPE}_conf"
+	"${TYPE}_up"
+	chpst -b "netsh-$NAME" pause
+}
+
+runit_finish() {
+	# read service config
+	runit_conf
+	# source service type script
+	. "@@PREFIX@@/lib/netsh/type/$TYPE"
+	# call service types conf and down function
+	"${TYPE}_conf"
+	"${TYPE}_down"
+}
+
+case "$1" in
+	run) runit_run "$@" ;;
+	finish) runit_finish "$@" ;;
+esac

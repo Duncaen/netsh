@@ -1,0 +1,35 @@
+#!/bin/sh
+
+ethernet_conf() {
+	: ${NAME:=}
+	: ${UP_TIMEOUT:=5}
+	: ${CARRIER_TIMEOUT:=5}
+	[ -z "${NAME}" ] && msg_error "'NAME' option is requiered"
+	[ ! -d "/sys/class/net/${NAME}" ] && \
+		msg_error "Interface '${NAME}' does not exist"
+}
+
+ethernet_up() {
+	if [ -z "$IP6" ]; then
+		msg_debug "Disabling IPv6 for interface '${NAME}'"
+		sysctl -q -w "net.ipv6.conf.${NAME}.disable_ipv6=1"
+		[ "$?" -ne 0 ] && msg_warn "Could not disable IPv6 for interface '${NAME}'"
+	fi
+
+	ip_do link set dev "${NAME}" up
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' up"
+	[ "$UP_TIMEOUT" -ne 0 ] && ip_wait_up "${NAME}"
+
+	[ "$CARRIER_TIMEOUT" -ne 0 ] && ip_wait_carrier_up "${NAME}"
+
+	ip_set "${NAME}"
+	return 0
+}
+
+ethernet_down() {
+	ip_unset "${NAME}"
+	ip_do link set dev "${NAME}" down
+	[ "$?" -ne 0 ] && msg_error "Could not bring interface '${NAME}' down"
+	[ "$DOWN_TIMEOUT" -ne 0 ] && ip_wait_down "${NAME}"
+	return 0
+}

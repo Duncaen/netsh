@@ -1,0 +1,29 @@
+netns_up() {
+	if [ -a "/var/run/netns/$1" ]; then
+		msg_debug "Network namespace '$1' already exists"
+	else
+		ip netns add "$1"
+		[ "$?" -ne 0 ] && msg_error "Could not add network namespace '$1'"
+	fi
+
+	for dev in "$BINDS"; do
+		msg_debug "Bind '$dev' into network namespace '$1'"
+		ip link set "$dev" netns "$1"
+		[ "$?" -ne 0 ] && msg_error "Could not bind '$dev' into network namespace '$1'"
+		ip netns "$1" exec ip link set dev "$dev" up
+		[ "$?" -ne 0 ] && msg_error "Could bring interface '$dev' up"
+	done
+
+	ip netns exec "$1" ip link list
+
+	return 0
+}
+
+netns_down() {
+	for pair in "$PAIRS"; do
+		msg_debug "Delete veth pair '${pair%:*}' '${pair#*:}'"
+		ip link delete "${pair%:*}" type veth
+		[ "$?" -ne 0 ] && msg_error "Could not delete pair '$pair'"
+	done
+	return 0
+}

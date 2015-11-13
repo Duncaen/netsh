@@ -1,0 +1,29 @@
+veth_conf() {
+	# if pair option is empty, try to use it form the service name
+	if [ -z "$PAIR" ]; then
+		params="${NAME#*-}"
+		PAIR="${params%-*}:${params#*-}"
+	fi
+}
+
+veth_up() {
+	echo 1 > /proc/sys/net/ipv4/ip_forward
+
+	if [ -d "/sys/class/net/${PAIR%:*}" ]; then
+		msg_debug "veth PAIR '${PAIR%:*}' '${PAIR#*:}' already exists"
+	else
+		msg_debug "Create veth PAIR '${PAIR%:*}' '${PAIR#*:}'"
+		ip link add "${PAIR%:*}" type veth peer name "${PAIR#*:}"
+		[ "$?" -ne 0 ] && msg_error "Could not add PAIR '$PAIR'"
+		interface_up "${PAIR%:*}"
+	fi
+
+	return 0
+}
+
+veth_down() {
+	msg_debug "Delete veth PAIR '${PAIR%:*}' '${PAIR#*:}'"
+	ip link delete "${PAIR%:*}" type veth
+	[ "$?" -ne 0 ] && msg_error "Could not delete PAIR '$PAIR'"
+	return 0
+}
